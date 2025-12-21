@@ -61,7 +61,7 @@ class Flickr8kDataModule(DataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         train_val_test_split: tuple = (0.8, 0.1, 0.1),
-        freq_threshold: int = 5,
+        freq_threshold: int = 0,
         img_size: int = 224,
         **kwargs,
     ):
@@ -177,7 +177,7 @@ class Flickr8kDataModule(DataModule):
         test_df = df[df["image"].isin(test_imgs)].reset_index(drop=True)
 
         # Build Vocab from training captions to ensure relastic evaluation
-        self.vocab = Vocabulary(freq_threshold=0)
+        self.vocab = Vocabulary(self.freq_threshold)
         self.vocab.build_vocabulary(train_df["clean_captions"].to_list())
 
         # Finaly Create Datasets

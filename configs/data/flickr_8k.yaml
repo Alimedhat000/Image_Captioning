@@ -1,0 +1,12 @@
+# MNIST DataModule configuration
+_target_: src.data.flickr_8k_datamodule.Flickr8kDataModule
+name: "flickr8k"
+
+data_dir: ${paths.data_dir}
+batch_size: 32
+num_workers: 0                #Number of threads/workers: Increase this if you're training with GPU common values is 2,4,8 
+pin_memory: false             #Whether to use Pin memory or not: It should be false for small batch sizes and when GPU is 100% utilitzed 
+
+train_val_test_split: [0.8, 0.1, 0.1 ]
+freq_threshold: 0
+img_size: 224
