@@ -1,7 +1,7 @@
 # Main training configuration
 defaults:
   - _self_
-  - data: mnist
+  - data: flickr8k
   - model: simple_cnn
   - trainer: default
   - callbacks: default
