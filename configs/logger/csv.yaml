@@ -1,0 +1,6 @@
+# CSV logger configuration
+_target_: src.core.loggers.CSVLogger
+
+save_dir: ${paths.output_dir}/csv
+name: ${model.name}
+version: ${experiment_name}

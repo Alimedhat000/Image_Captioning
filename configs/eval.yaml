@@ -1,0 +1,21 @@
+# Evaluation configuration
+defaults:
+  - _self_
+  - data: mnist
+  - model: simple_cnn
+  - trainer: default
+  - callbacks: null  # No callbacks needed for eval
+  - logger: csv  # Minimal logging
+  - paths: default
+
+# Experiment settings
+seed: 42
+ckpt_path: ???  # Must be provided via command line
+
+# Metric to return
+optimized_metric: "test/acc"
+
+# Hydra settings
+hydra:
+  run:
+    dir: ${paths.log_dir}/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}

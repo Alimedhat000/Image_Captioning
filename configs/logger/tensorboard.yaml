@@ -1,0 +1,6 @@
+# TensorBoard logger configuration
+_target_: src.core.loggers.TensorBoardLogger
+
+save_dir: ${paths.log_dir}  
+name: ${model.name}
+version: ${experiment_name}

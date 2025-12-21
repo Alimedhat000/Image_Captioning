@@ -1,0 +1,27 @@
+# Callbacks configuration
+model_checkpoint:
+  _target_: src.core.callbacks.ModelCheckpoint
+  dirpath: ${paths.log_dir}/${model.name}/${experiment_name}/checkpoints
+  filename: "epoch_{epoch:03d}"
+  monitor: "val/acc"
+  mode: "max"
+  save_last: true
+  save_top_k: 1
+  verbose: true
+
+early_stopping:
+  _target_: src.core.callbacks.EarlyStopping
+  monitor: "val/acc"
+  patience: 5
+  mode: "max"
+  min_delta: 0.0
+  verbose: true
+
+rich_progress_bar:
+  _target_: src.core.callbacks.RichProgressBar
+  refresh_rate: 30
+  metric_modes:
+    train/loss: "min"
+    train/acc: "max"
+    val/loss: "min"
+    val/acc: "max"

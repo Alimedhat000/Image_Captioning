@@ -1,0 +1,9 @@
+# Default trainer configuration
+_target_: src.core.trainer.Trainer
+
+max_epochs: 10
+accelerator: auto
+devices: 1
+log_every_n_steps: 50
+check_val_every_n_epoch: 1
+gradient_clip_val: null

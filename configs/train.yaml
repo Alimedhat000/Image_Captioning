@@ -1,0 +1,31 @@
+# Main training configuration
+defaults:
+  - _self_
+  - data: mnist
+  - model: simple_cnn
+  - trainer: default
+  - callbacks: default
+  - logger: tensorboard
+  - paths: default
+
+# Experiment settings
+seed: 42
+train: true
+test: true
+ckpt_path: null
+
+# Experiment naming (leave null to use timestamp)
+experiment_name: null
+
+# Metric to optimize (for hyperparameter tuning)
+optimized_metric: "val/acc"
+
+# Hydra settings
+hydra:
+  run:
+    # Keep Hydra outputs separate from training logs
+    dir: logs/hydra_outputs/${now:%Y-%m-%d_%H-%M-%S}
+  
+  sweep:
+    dir: logs/hydra_outputs/multirun/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}_${model.name}

@@ -1,0 +1,19 @@
+# Simple CNN model for MNIST
+_target_: src.models.mnist_classifier.MNISTClassifier
+name: "simple_cnn"
+
+# Network architecture
+net:
+  _target_: src.models.components.simple_cnn.SimpleCNN
+  input_channels: 1
+  num_classes: 10
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.001
+  weight_decay: 0.0001
+
+# Optional scheduler
+scheduler: null

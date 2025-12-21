@@ -1,0 +1,19 @@
+# ResNet18 for MNIST
+_target_: src.models.mnist_classifier.MNISTClassifier
+name: "resnet18"
+
+# Network architecture - wrapped ResNet18
+net:
+  _target_: src.models.components.mnist_resnet.MNISTResNet18
+  num_classes: 10
+  pretrained: True
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.001
+  weight_decay: 0.0001
+
+# Optional scheduler
+scheduler: null
