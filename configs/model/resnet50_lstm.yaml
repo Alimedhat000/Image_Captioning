@@ -1,0 +1,36 @@
+_target_: src.models.image_captioner.ImageCaptioner
+name: "resnet50_lstm"
+
+# Network architecture 
+encoder:
+  _target_: src.models.components.resnet_encoder.ResNet50Encoder
+  embed_size: 512
+  pretrained: true
+  freeze: True
+
+decoder:
+  _target_: src.models.components.lstm_decoder.LSTMDecoder
+  embed_size: 512
+  hidden_size: 512
+  vocab_size: ???  # This will be set programmatically in training script
+  num_layers: 1
+  dropout: 0.5
+
+# vocab_size will be passed from the training script
+vocab_size: ???
+pad_idx: 0  # Padding token index
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0015
+  weight_decay: 0.0001
+
+# Optional scheduler
+#scheduler:
+  #_target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  #_partial_: true
+  #mode: min
+  #factor: 0.5
+  #patience: 3

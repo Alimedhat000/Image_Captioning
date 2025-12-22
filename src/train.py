@@ -1,10 +1,10 @@
+"""Training script for image captioning with custom Trainer."""
+
 import sys
 import os
 
 # Add the project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-"""Training script with Hydra configuration."""
 
 from typing import List, Optional
 import hydra
@@ -99,19 +99,71 @@ def main(cfg: DictConfig) -> Optional[float]:
         if torch.cuda.is_available():
             torch.cuda.manual_seed(cfg.seed)
 
+    # ========== Initialize DataModule FIRST ==========
     print_text(f"Instantiating datamodule <{cfg.data._target_}>", style="bold blue")
     datamodule: DataModule = hydra.utils.instantiate(cfg.data)
 
+    # ========== Setup DataModule to Build Vocabulary ==========
+    print_text("Building vocabulary from training data...", style="bold blue")
+    datamodule.prepare_data()
+    datamodule.setup(stage="fit")
+
+    # ========== Get Vocabulary Info ==========
+    # Check if datamodule has vocab methods (for image captioning)
+    if hasattr(datamodule, "get_vocab") and hasattr(datamodule, "get_vocab_size"):
+        vocab = datamodule.get_vocab()
+        vocab_size = datamodule.get_vocab_size()
+        pad_idx = vocab.pad_idx
+
+        print_text(f"Vocabulary size: {vocab_size}", style="bold green")
+        print_text(f"Padding index: {pad_idx}", style="bold green")
+
+        # ========== Update Config with Vocab Size ==========
+        OmegaConf.set_struct(cfg, False)
+        cfg.model.vocab_size = vocab_size
+        cfg.model.decoder.vocab_size = vocab_size
+        cfg.model.pad_idx = pad_idx
+        OmegaConf.set_struct(cfg, True)
+    else:
+        vocab = None
+        print_text(
+            "DataModule does not require vocabulary (non-captioning task)",
+            style="yellow",
+        )
+
+    print_text(
+        f"Train dataset size: {len(datamodule.train_dataset)}", style="bold green"
+    )
+    if hasattr(datamodule, "val_dataset") and datamodule.val_dataset is not None:
+        print_text(
+            f"Val dataset size: {len(datamodule.val_dataset)}", style="bold green"
+        )
+
+    # ========== Initialize Model ==========
     print_text(f"Instantiating model <{cfg.model._target_}>", style="bold blue")
     model: BaseModule = hydra.utils.instantiate(cfg.model)
 
-    callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"), cfg)
+    # Print model info
+    if hasattr(model, "model_name"):
+        print_text(f"\nModel: {model.model_name}", style="bold cyan")
+    if hasattr(model, "encoder"):
+        print_text(f"Encoder: {model.encoder.__class__.__name__}", style="cyan")
+    if hasattr(model, "decoder"):
+        print_text(f"Decoder: {model.decoder.__class__.__name__}", style="cyan")
 
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print_text(f"Total parameters: {total_params:,}", style="bold green")
+    print_text(f"Trainable parameters: {trainable_params:,}", style="bold green")
+
+    # ========== Initialize Callbacks and Loggers ==========
+    callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"), cfg)
     loggers: List[Logger] = instantiate_loggers(cfg.get("logger"), cfg)
 
     # Explicitly create MultiLogger if loggers are present
     trainer_logger = MultiLogger(loggers) if loggers else None
 
+    # ========== Initialize Trainer ==========
     print_text(f"Instantiating trainer <{cfg.trainer._target_}>", style="bold blue")
     trainer: Trainer = hydra.utils.instantiate(
         cfg.trainer,
@@ -122,10 +174,9 @@ def main(cfg: DictConfig) -> Optional[float]:
     # Print config and model summary with rich formatting
     print_config(cfg)
 
+    # Try to print model summary
     try:
         # Get input size from datamodule
-        datamodule.prepare_data()
-        datamodule.setup(stage="fit")
         input_size = datamodule.train_dataset[0][0].shape
 
         # Add batch dimension
@@ -140,7 +191,7 @@ def main(cfg: DictConfig) -> Optional[float]:
     except Exception as e:
         print_text(f"Could not generate model summary: {e}", style="bold red")
 
-    # Training
+    # ========== Training ==========
     if cfg.get("train"):
         print_colored_separator("Starting Training!", style="bold green")
         trainer.fit(
@@ -149,7 +200,7 @@ def main(cfg: DictConfig) -> Optional[float]:
             ckpt_path=cfg.get("ckpt_path"),
         )
 
-    # Testing
+    # ========== Testing ==========
     if cfg.get("test"):
         print_colored_separator("Starting Testing!", style="bold green")
         ckpt_path = None
@@ -169,6 +220,59 @@ def main(cfg: DictConfig) -> Optional[float]:
             datamodule=datamodule,
             ckpt_path=ckpt_path,
         )
+
+    # ========== Generate Sample Captions (if applicable) ==========
+    if cfg.get("generate_samples", False) and vocab is not None:
+        print_colored_separator("Generating Sample Captions", style="bold cyan")
+
+        model.eval()
+
+        # Get a batch from validation set
+        val_loader = datamodule.val_dataloader()
+        val_batch = next(iter(val_loader))
+        images, captions, lengths = val_batch
+
+        # Move to device
+        images = images.to(trainer.device)
+
+        # Generate captions (greedy)
+        print_text("\nGreedy Search:", style="bold yellow")
+        try:
+            generated_captions = model.generate_caption(
+                images[:5],  # First 5 images
+                vocab,
+                max_length=20,
+                method="greedy",
+            )
+
+            for i, cap_indices in enumerate(generated_captions):
+                caption_text = vocab.decode(cap_indices, skip_special_tokens=True)
+                print_text(f"  Image {i + 1}: {caption_text}", style="green")
+        except Exception as e:
+            print_text(f"Error generating captions: {e}", style="bold red")
+
+        # Generate with beam search
+        print_text("\nBeam Search:", style="bold yellow")
+        try:
+            generated_captions_beam = model.generate_caption(
+                images[:5], vocab, max_length=20, method="beam"
+            )
+
+            for i, cap_indices in enumerate(generated_captions_beam):
+                caption_text = vocab.decode(cap_indices, skip_special_tokens=True)
+                print_text(f"  Image {i + 1}: {caption_text}", style="green")
+        except Exception as e:
+            print_text(
+                f"Error generating captions with beam search: {e}", style="bold red"
+            )
+
+        # Show reference captions for comparison
+        print_text("\nReference Captions:", style="bold yellow")
+        for i in range(min(5, len(captions))):
+            ref_caption = vocab.decode(captions[i].tolist(), skip_special_tokens=True)
+            print_text(f"  Image {i + 1}: {ref_caption}", style="blue")
+
+    print_colored_separator("Training Complete!", style="bold green")
 
     # Return metric for hyperparameter optimization
     metric_name = cfg.get("optimized_metric")

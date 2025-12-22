@@ -1,8 +1,8 @@
 # Main training configuration
 defaults:
   - _self_
-  - data: flickr8k
-  - model: simple_cnn
+  - data: flickr_8k
+  - model: resnet50_lstm
   - trainer: default
   - callbacks: default
   - logger: tensorboard

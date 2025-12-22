@@ -92,3 +92,15 @@ class DataModule:
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
         )
+
+    def get_vocab_size(self):
+        """Get vocabulary size."""
+        if self.vocab is None:
+            raise RuntimeError("Vocabulary not built. Call setup() first.")
+        return len(self.vocab)
+
+    def get_vocab(self):
+        """Get vocabulary object."""
+        if self.vocab is None:
+            raise RuntimeError("Vocabulary not built. Call setup() first.")
+        return self.vocab

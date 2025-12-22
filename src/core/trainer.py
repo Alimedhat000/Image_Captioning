@@ -41,7 +41,6 @@ class Trainer:
             check_val_every_n_epoch: Run validation every N epochs
             callbacks: List of callbacks
             logger: Logger or list of loggers
-            enable_progress_bar: Whether to show progress bar
             gradient_clip_val: Gradient clipping value (optional)
         """
         self.max_epochs = max_epochs
@@ -111,9 +110,6 @@ class Trainer:
         # Setup
         self.model = model.to(self.device)
 
-        # Setup data
-        datamodule.prepare_data()
-        datamodule.setup(stage="fit")
         self.train_dataloader = datamodule.train_dataloader()
         self.val_dataloader = datamodule.val_dataloader()
 
@@ -160,6 +156,18 @@ class Trainer:
                 # Validation
                 if (epoch + 1) % self.check_val_every_n_epoch == 0:
                     self._validation_epoch()
+
+                # Scheduler step
+                if self.scheduler is not None:
+                    if isinstance(
+                        self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+                    ):
+                        if (epoch + 1) % self.check_val_every_n_epoch == 0:
+                            val_loss = self.callback_metrics.get("val/loss")
+                            if val_loss is not None:
+                                self.scheduler.step(val_loss)
+                    else:
+                        self.scheduler.step()
 
                 # Callbacks: on_epoch_end
                 for callback in self.callbacks:
@@ -276,9 +284,6 @@ class Trainer:
 
             self.global_step += 1
 
-        # Scheduler step (if epoch-based)
-        if self.scheduler is not None:
-            self.scheduler.step()
 
         # Aggregate epoch metrics
         train_metrics = self._aggregate_outputs(epoch_outputs)
@@ -287,6 +292,10 @@ class Trainer:
         # Log epoch metrics with epoch number
         if self.logger:
             self.logger.log_metrics(train_metrics, self.current_epoch)
+
+        # Log epoch marker
+        if self.logger:
+            self.logger.log_metrics({"epoch": self.current_epoch}, self.global_step)
 
         self.model.on_train_epoch_end()
 

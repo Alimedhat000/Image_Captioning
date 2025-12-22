@@ -45,7 +45,7 @@ class Flickr8kDataset(Dataset):
             img = self.transform(img)
 
         # Encode caption
-        caption = row["clean_caption"]
+        caption = row["clean_captions"]
         caption_encoded = self.vocab.encode(caption)
 
         return img, torch.tensor(caption_encoded, dtype=torch.long)
@@ -137,15 +137,13 @@ class Flickr8kDataModule(DataModule):
     def _preprocess_captions(self, df):
         def clean_caption(text):
             text = text.lower()
-            text = re.sub(r"[^a-z]", "", text)  # remove all non alphabetic characters
-            text = " ".join(text.split())
-
+            text = re.sub(r"[^a-z\s]", " ", text)
+            text = " ".join(text.split())  # Normalize multiple spaces to single space
             return text
 
         df["clean_captions"] = df["caption"].apply(clean_caption)
-        df["clean_captions"] = (
-            "<sos> " + df["clean_caption"] + " <eos>"
-        )  # add start and end tokens
+        df["clean_captions"] = "<sos> " + df["clean_captions"] + " <eos>"
+        return df
 
     def setup(self, stage: Optional[str] = None):
         """Setup datasets."""
@@ -161,14 +159,14 @@ class Flickr8kDataModule(DataModule):
         train_imgs, temp_imgs = train_test_split(
             unique_images,
             test_size=(val_ratio + test_ratio),
-            random_state=self.random_seed,
+            random_state=42,
         )
 
         # Second split: val vs test
         val_imgs, test_imgs = train_test_split(
             temp_imgs,
             test_size=test_ratio / (val_ratio + test_ratio),
-            random_state=self.random_seed,
+            random_state=42,
         )
 
         # Create a Dataframe for each split

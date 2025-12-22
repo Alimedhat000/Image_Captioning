@@ -17,6 +17,7 @@ class LSTMDecoder(nn.Module):
             input_size=embed_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
+            batch_first=True,
             dropout=dropout
             if num_layers > 1
             else 0,  # don't dropout of we only have one layer
@@ -45,9 +46,9 @@ class LSTMDecoder(nn.Module):
 
         packed = nn.utils.rnn.pack_padded_sequence(
             embeddings,
-            lengths + 1,  # +1 for image feature
+            (lengths + 1).cpu(),  # +1 for image feature
             batch_first=True,
-            enforce_sorted=True,
+            enforce_sorted=False,
         )
 
         # LSTM forward pass
@@ -60,3 +61,119 @@ class LSTMDecoder(nn.Module):
         outputs = self.fc(hiddens)
 
         return outputs
+
+    def generate_caption(self, features, vocab, max_length=20, device="cpu"):
+        """Generate caption using greedy search (for inference).
+
+        Args:
+            features: Image features [1, embed_size]
+            vocab: Vocabulary object with start_idx and end_idx
+            max_length: Maximum caption length
+            device: Device to run on
+
+        Returns:
+            caption: List of word indices
+        """
+        result = []
+        states = None
+
+        # Start with image features
+        inputs = features.unsqueeze(1)  # [1, 1, embed_size]
+
+        for _ in range(max_length):
+            # LSTM forward
+            hiddens, states = self.lstm(inputs, states)
+
+            # Get predictions
+            outputs = self.fc(hiddens.squeeze(1))  # [1, vocab_size]
+
+            # Get predicted word (greedy)
+            predicted = outputs.argmax(1)  # [1]
+
+            result.append(predicted.item())
+
+            # Stop if end token is generated
+            if predicted.item() == vocab.end_idx:
+                break
+
+            # Prepare next input (embed predicted word)
+            inputs = self.embedding(predicted).unsqueeze(1)  # [1, 1, embed_size]
+
+        return result
+
+    def beam_search(self, features, vocab, beam_width=5, max_length=20, device="cpu"):
+        """Generate caption using beam search (higher quality).
+
+        Based on the paper's beam search implementation.
+
+        Args:
+            features: Image features [1, embed_size]
+            vocab: Vocabulary object
+            beam_width: Number of beams (paper uses k=3 or k=5)
+            max_length: Maximum caption length
+            device: Device to run on
+
+        Returns:
+            best_caption: List of word indices for best caption
+        """
+        # Start with image features
+        k = beam_width
+
+        # Initial beam: [(sequence, score, hidden_state, cell_state)]
+        sequences = [[vocab.start_idx]]
+        scores = [0.0]
+
+        # Initialize LSTM states
+        h = torch.zeros(self.num_layers, 1, self.hidden_size).to(device)
+        c = torch.zeros(self.num_layers, 1, self.hidden_size).to(device)
+
+        # Process image features through LSTM first
+        inputs = features.unsqueeze(1)  # [1, 1, embed_size]
+        _, (h, c) = self.lstm(inputs, (h, c))
+
+        # Replicate states for beam
+        states = [(h, c)]
+
+        # Generate sequences
+        for step in range(max_length):
+            all_candidates = []
+
+            for i, seq in enumerate(sequences):
+                # Stop if sequence ends with end token
+                if seq[-1] == vocab.end_idx:
+                    all_candidates.append((seq, scores[i], states[i]))
+                    continue
+
+                # Get last word embedding
+                last_word = torch.tensor([seq[-1]]).to(device)
+                inputs = self.embedding(last_word).unsqueeze(1)  # [1, 1, embed_size]
+
+                # LSTM forward
+                hiddens, new_state = self.lstm(inputs, states[i])
+
+                # Get predictions
+                outputs = self.fc(hiddens.squeeze(1))  # [1, vocab_size]
+                log_probs = torch.log_softmax(outputs, dim=1)
+
+                # Get top k predictions
+                top_log_probs, top_indices = log_probs.topk(k, dim=1)
+
+                # Create new candidates
+                for j in range(k):
+                    candidate_seq = seq + [top_indices[0, j].item()]
+                    candidate_score = scores[i] + top_log_probs[0, j].item()
+                    all_candidates.append((candidate_seq, candidate_score, new_state))
+
+            # Select top k candidates
+            ordered = sorted(all_candidates, key=lambda x: x[1], reverse=True)
+            sequences = [c[0] for c in ordered[:k]]
+            scores = [c[1] for c in ordered[:k]]
+            states = [c[2] for c in ordered[:k]]
+
+            # Stop if all sequences end with end token
+            if all(seq[-1] == vocab.end_idx for seq in sequences):
+                break
+
+        # Return best sequence
+        best_idx = scores.index(max(scores))
+        return sequences[best_idx]
