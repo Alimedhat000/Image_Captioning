@@ -57,21 +57,23 @@ class Vocabulary:
 
     def decode(self, indices, skip_special_tokens=True):
         """Convert indices back to text."""
-        # Convert tensor to list if needed
+        # Force conversion to list
         if hasattr(indices, "tolist"):
             indices = indices.tolist()
 
+        # If indices is a nested list (e.g., [[1, 2, 3]]), flatten it
+        if len(indices) > 0 and isinstance(indices[0], list):
+            indices = indices[0]
+
         words = []
-        special_token_indices = {
-            self.word2idx[self.PAD_TOKEN],
-            self.word2idx[self.START_TOKEN],
-            self.word2idx[self.END_TOKEN],
-        }
+        special_token_indices = {self.start_idx, self.end_idx, self.pad_idx}
 
         for idx in indices:
-            if skip_special_tokens and idx in special_token_indices:
+            # Handle potential tensor/list items
+            curr_idx = int(idx)
+            if skip_special_tokens and curr_idx in special_token_indices:
                 continue
-            words.append(self.idx2word.get(idx, self.UNK_TOKEN))
+            words.append(self.idx2word.get(curr_idx, self.UNK_TOKEN))
 
         return " ".join(words)
 

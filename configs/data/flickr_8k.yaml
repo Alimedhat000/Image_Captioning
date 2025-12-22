@@ -4,7 +4,7 @@ name: "flickr8k"
 
 data_dir: ${paths.data_dir}/flickr8k
 batch_size: 128
-num_workers: 0                #Number of threads/workers: Increase this if you're training with GPU common values is 2,4,8 
+num_workers: 8              #Number of threads/workers: Increase this if you're training with GPU common values is 2,4,8 
 pin_memory: false             #Whether to use Pin memory or not: It should be false for small batch sizes and when GPU is 100% utilitzed 
 
 train_val_test_split: [0.8, 0.1, 0.1 ]

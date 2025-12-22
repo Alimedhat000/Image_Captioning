@@ -80,7 +80,12 @@ class ImageCaptioner(BaseModule):
         # If captions provided, use teacher forcing (training mode)
         if captions is not None and lengths is not None:
             outputs = self.decoder(features, captions, lengths)
-            return outputs
+
+            if isinstance(outputs, tuple):
+                outputs, alphas = outputs  # Attention decoder
+                return outputs, alphas
+            else:
+                return outputs  # Regular decoder
 
         # Otherwise, return features for generation (inference mode)
         return features
@@ -103,6 +108,11 @@ class ImageCaptioner(BaseModule):
         # Input: captions without <end>, Target: captions without <start>
         outputs = self(images, captions[:, :-1], lengths - 1)
 
+        # handle attention
+        if isinstance(outputs, tuple):
+            outputs, alphas = outputs
+        else:
+            outputs = outputs
         # Reshape for loss calculation
         # outputs: [batch_size, max_length, vocab_size]
         # targets: [batch_size, max_length]
@@ -144,6 +154,11 @@ class ImageCaptioner(BaseModule):
         # Forward pass
         outputs = self(images, captions[:, :-1], lengths - 1)
 
+        if isinstance(outputs, tuple):
+            outputs, alphas = outputs
+        else:
+            outputs = outputs
+
         # Prepare targets
         targets = captions[:, 1:]
 
@@ -178,6 +193,9 @@ class ImageCaptioner(BaseModule):
 
         # Forward pass
         outputs = self(images, captions[:, :-1], lengths - 1)
+
+        if isinstance(outputs, tuple):
+            outputs, alphas = outputs  # Attention decoder
 
         # Prepare targets
         targets = captions[:, 1:]
