@@ -198,7 +198,7 @@ class ImageCaptioner(BaseModule):
         }
 
     def generate_caption(
-        self, images: torch.Tensor, vocab, max_length: int = 20, method: str = "greedy"
+        self, images: torch.Tensor, vocab, max_length: int = 200, method: str = "greedy"
     ):
         """Generate captions for images (inference).
 

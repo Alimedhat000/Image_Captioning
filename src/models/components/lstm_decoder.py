@@ -62,7 +62,7 @@ class LSTMDecoder(nn.Module):
 
         return outputs
 
-    def generate_caption(self, features, vocab, max_length=20, device="cpu"):
+    def generate_caption(self, features, vocab, max_length=500, device="cpu"):
         """Generate caption using greedy search (for inference).
 
         Args:
