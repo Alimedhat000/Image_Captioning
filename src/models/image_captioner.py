@@ -49,8 +49,8 @@ class ImageCaptioner(BaseModule):
         self.optimizer_config = optimizer
         self.scheduler_config = scheduler
 
-        # Loss function (ignore padding tokens)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
+        # Loss function
+        self.criterion = nn.CrossEntropyLoss(reduction="none")
 
     @property
     def vocab_size(self):
@@ -90,44 +90,25 @@ class ImageCaptioner(BaseModule):
         # Otherwise, return features for generation (inference mode)
         return features
 
-    def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Training step.
-
-        Args:
-            batch: Tuple of (images, captions, lengths)
-            batch_idx: Batch index
-
-        Returns:
-            Tuple of (loss, metrics_dict)
-        """
+    def training_step(self, batch, batch_idx):
+        """Training step with properly masked loss."""
         images, captions, lengths = batch
 
         # Forward pass
-        # Input: captions without <end>, Target: captions without <start>
-        outputs = self(images, captions[:, :-1], lengths - 1)
+        result = self(images, captions[:, :-1], lengths - 1)
 
-        # handle attention
-        if isinstance(outputs, tuple):
-            outputs, alphas = outputs
+        # Handle attention outputs
+        if isinstance(result, tuple):
+            outputs, alphas = result
         else:
-            outputs = outputs
-        # Reshape for loss calculation
-        # outputs: [batch_size, max_length, vocab_size]
-        # targets: [batch_size, max_length]
-        targets = captions[:, 1:]  # Remove <start> token
+            outputs = result
 
-        # Flatten for CrossEntropyLoss
-        # outputs: [batch_size * max_length, vocab_size]
-        # targets: [batch_size * max_length]
-        outputs_flat = outputs[:, : targets.shape[1], :].reshape(-1, self.vocab_size)
-        targets_flat = targets.reshape(-1)
+        # Targets (remove start token)
+        targets = captions[:, 1:]
 
-        # Calculate loss
-        loss = self.criterion(outputs_flat, targets_flat)
+        # Calculate masked loss
+        loss = self.calculate_masked_loss(outputs, targets, lengths - 1)
 
-        # Calculate perplexity
         perplexity = torch.exp(loss)
 
         metrics = {
@@ -137,39 +118,22 @@ class ImageCaptioner(BaseModule):
 
         return loss, metrics
 
-    def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> Dict[str, torch.Tensor]:
-        """Validation step.
-
-        Args:
-            batch: Tuple of (images, captions, lengths)
-            batch_idx: Batch index
-
-        Returns:
-            Dictionary with metrics
-        """
+    def validation_step(self, batch, batch_idx):
+        """Validation step with properly masked loss."""
         images, captions, lengths = batch
 
         # Forward pass
-        outputs = self(images, captions[:, :-1], lengths - 1)
+        result = self(images, captions[:, :-1], lengths - 1)
 
-        if isinstance(outputs, tuple):
-            outputs, alphas = outputs
+        if isinstance(result, tuple):
+            outputs, alphas = result
         else:
-            outputs = outputs
+            outputs = result
 
-        # Prepare targets
         targets = captions[:, 1:]
 
-        # Flatten for loss
-        outputs_flat = outputs[:, : targets.shape[1], :].reshape(-1, self.vocab_size)
-        targets_flat = targets.reshape(-1)
-
-        # Calculate loss
-        loss = self.criterion(outputs_flat, targets_flat)
-
-        # Calculate perplexity exp of cross entropy
+        # Masked loss - now returns 3 values!
+        loss = self.calculate_masked_loss(outputs, targets, lengths - 1)
         perplexity = torch.exp(loss)
 
         return {
@@ -200,12 +164,8 @@ class ImageCaptioner(BaseModule):
         # Prepare targets
         targets = captions[:, 1:]
 
-        # Flatten for loss
-        outputs_flat = outputs[:, : targets.shape[1], :].reshape(-1, self.vocab_size)
-        targets_flat = targets.reshape(-1)
-
         # Calculate loss
-        loss = self.criterion(outputs_flat, targets_flat)
+        loss = self.calculate_masked_loss(outputs, targets, lengths - 1)
 
         # Calculate perplexity
         perplexity = torch.exp(loss)
@@ -214,6 +174,50 @@ class ImageCaptioner(BaseModule):
             "test/loss": loss,
             "test/perplexity": perplexity,
         }
+
+    def calculate_masked_loss(self, outputs, targets, lengths):
+        """Calculate loss only on non-padding tokens.
+
+        Args:
+            outputs: [batch_size, max_length, vocab_size]
+            targets: [batch_size, max_length]
+            lengths: [batch_size] - actual lengths (without start token)
+
+        Returns:
+            loss: Scalar loss
+        """
+        batch_size, max_length, vocab_size = outputs.shape
+
+        # Flatten for loss calculation
+        outputs_flat = outputs.reshape(-1, vocab_size)  # [batch*max_length, vocab_size]
+        targets_flat = targets.reshape(-1)  # [batch*max_length]
+
+        # Calculate per-token loss (no reduction)
+        loss_per_token = self.criterion(
+            outputs_flat, targets_flat
+        )  # [batch*max_length]
+        loss_per_token = loss_per_token.reshape(
+            batch_size, max_length
+        )  # [batch, max_length]
+
+        # Create mask: 1 for real tokens, 0 for padding
+        mask = torch.zeros_like(targets, dtype=torch.float)
+        for i, length in enumerate(lengths):
+            mask[i, :length] = 1.0
+
+        # Apply mask
+        masked_loss = loss_per_token * mask
+
+        # Average over non-padding tokens only
+        total_loss = masked_loss.sum()
+        num_tokens = mask.sum()
+
+        if num_tokens > 0:
+            loss = total_loss / num_tokens
+        else:
+            loss = total_loss  # Fallback
+
+        return loss
 
     def generate_caption(
         self, images: torch.Tensor, vocab, max_length: int = 200, method: str = "greedy"
