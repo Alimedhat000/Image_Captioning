@@ -37,6 +37,9 @@ install:
 train:
 	python3 src/train.py $(ARGS)
 
+debug:
+	python3 src/train.py --config-name debug
+
 # Eval - requires CKPT parameter
 eval:
 	@if [ -z "$(CKPT)" ]; then \

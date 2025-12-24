@@ -1,3 +1,4 @@
 # Path configurations
 data_dir: ${oc.env:DATA_DIR,data}
 log_dir: ${oc.env:LOG_DIR,logs}
+profile_dir: ${log_dir}/profiler

@@ -1,5 +1,5 @@
 _target_: src.models.image_captioner.ImageCaptioner
-name: "resnet50_attention_lstm"
+name: "resnet50_attention_gru"
 
 encoder:
   _target_: src.models.components.resnet_encoder.ResNet50Encoder
