@@ -32,6 +32,10 @@ Two different architectures were implemented and evaluated:
 4. **ResNet50(Spatial features) + Attention + Stacked GRU**
    - Removed ResNet50 AvgPooling and fc layers and just used 49 raw features instead.
 
+5. **ResNet50 + Attention + LSTM -> GRU**
+
+- Added a Gru layer above the lstm but it didn't yield that much of an improvement
+
 ### Dataset
 
 The models were trained and evaluated on the **Flickr8k** dataset. Each image is paired with multiple human annotated captions. Standard train, validation, and test splits were used.
@@ -66,7 +70,6 @@ The Lstm attention based model was evaluated using BLEU scores with both greedy 
 | BLEU 3 | 0.1092       | 0.1083                       |
 | BLEU 4 | 0.0668       | 0.0671                       |
 
-
 The GRU based model was also evaluated using BLEU scores with both greedy decoding and beam search.
 
 | Metric | Greedy Score | Beam Score (beam width of 5) |
@@ -74,7 +77,7 @@ The GRU based model was also evaluated using BLEU scores with both greedy decodi
 | BLEU 1 | 0.3184       | 0.3014                       |
 | BLEU 2 | 0.1792       | 0.1732                       |
 | BLEU 3 | 0.1061       | 0.1050                       |
-| BLEU 4 | 0.0637       | 0.0651                       | 
+| BLEU 4 | 0.0637       | 0.0651                       |
 
 Beam search provided a slight improvement in higher order BLEU scores, while greedy decoding performed comparably on unigram precision. This behavior is consistent with common observations in image captioning models.
 
@@ -97,7 +100,6 @@ Adding Spatial Features did not improve the BLEU metrics that much
 
 Planned extensions for this project include:
 
-- Exploring hybrid architectures combining LSTM and GRU layers
 - Adding additional evaluation metrics such as CIDEr and METEOR
 - Improving attention mechanisms or experimenting with transformer based decoders
 
