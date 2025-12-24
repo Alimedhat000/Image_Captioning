@@ -34,7 +34,10 @@ Two different architectures were implemented and evaluated:
 
 5. **ResNet50 + Attention + LSTM -> GRU**
 
-- Added a Gru layer above the lstm but it didn't yield that much of an improvement
+  - Added a Gru layer above the lstm but it didn't yield that much of an improvement
+
+6. **Adding spaCy Tokenizer instead of my custom one**
+  - This seemed to further improve the GRU model and yielded the best results
 
 ### Dataset
 

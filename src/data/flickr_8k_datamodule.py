@@ -63,6 +63,7 @@ class Flickr8kDataModule(DataModule):
         train_val_test_split: tuple = (0.8, 0.1, 0.1),
         freq_threshold: int = 0,
         img_size: int = 224,
+        use_spacy: bool = True,
         **kwargs,
     ):
         """Initialize MNIST DataModule.
@@ -94,6 +95,8 @@ class Flickr8kDataModule(DataModule):
         self.vocab = None
         self.train_dataset = None
         self.test_dataset = None
+
+        self.use_spacy = use_spacy
 
         # Image transforms
         self.train_transform = transforms.Compose(
@@ -137,7 +140,9 @@ class Flickr8kDataModule(DataModule):
     def _preprocess_captions(self, df):
         def clean_caption(text):
             text = text.lower()
-            text = re.sub(r"[^a-z\s]", " ", text)
+
+            if not self.use_spacy:
+                text = re.sub(r"[^a-z\s]", " ", text)
             text = " ".join(text.split())  # Normalize multiple spaces to single space
             return text
 
@@ -175,7 +180,7 @@ class Flickr8kDataModule(DataModule):
         test_df = df[df["image"].isin(test_imgs)].reset_index(drop=True)
 
         # Build Vocab from training captions to ensure relastic evaluation
-        self.vocab = Vocabulary(self.freq_threshold)
+        self.vocab = Vocabulary(self.freq_threshold, use_spacy=self.use_spacy)
         self.vocab.build_vocabulary(train_df["clean_captions"].to_list())
 
         # Finaly Create Datasets

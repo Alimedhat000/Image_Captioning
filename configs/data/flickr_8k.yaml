@@ -10,3 +10,5 @@ pin_memory: false             #Whether to use Pin memory or not: It should be fa
 train_val_test_split: [0.8, 0.1, 0.1 ]
 freq_threshold: 2
 img_size: 224
+
+use_spacy: True
