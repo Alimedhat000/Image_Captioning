@@ -21,6 +21,14 @@ Two different architectures were implemented and evaluated:
    - Attention dimension of 512
    - LSTM hidden dimension of 512
 
+3. **ResNet50 + Attention + Stacked GRU**
+   - ResNet50 pretrained on ImageNet used as the image encoder
+   - Soft attention mechanism over spatial image features
+   - 3 layer stacked GRU decoder
+   - Word embedding dimension of 512
+   - Attention dimension of 512
+   - GRU hidden dimension of 512
+
 ### Dataset
 
 The models were trained and evaluated on the **Flickr8k** dataset. Each image is paired with multiple human annotated captions. Standard train, validation, and test splits were used.
@@ -38,9 +46,22 @@ Final training metrics for the attention based model:
 | Train      | 2.554 | 12.89      |
 | Validation | 2.855 | 17.85      |
 
+### Metrics Comparison
+
+<div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start;">
+  <div style="text-align: center;">
+    <img src="./imgs/loss.png" alt="Loss Comparison" width="400" style="object-fit: contain;"/>
+    <p>Loss Comparison</p>
+  </div>
+  <div style="text-align: center;">
+    <img src="./imgs/perplexity.png" alt="Perplexity Comparison" width="400" style="object-fit: contain;"/>
+    <p>Perplexity Comparison</p>
+  </div>
+</div>
+
 ### Evaluation Results
 
-The attention based model was evaluated using BLEU scores with both greedy decoding and beam search.
+The Lstm attention based model was evaluated using BLEU scores with both greedy decoding and beam search.
 
 | Metric | Greedy Score | Beam Score (beam width of 5) |
 | ------ | ------------ | ---------------------------- |
@@ -48,6 +69,16 @@ The attention based model was evaluated using BLEU scores with both greedy decod
 | BLEU 2 | 0.1825       | 0.1772                       |
 | BLEU 3 | 0.1092       | 0.1083                       |
 | BLEU 4 | 0.0668       | 0.0671                       |
+
+
+The GRU based model was also evaluated using BLEU scores with both greedy decoding and beam search.
+
+| Metric | Greedy Score | Beam Score (beam width of 5) |
+| ------ | ------------ | ---------------------------- |
+| BLEU 1 | 0.3184       | 0.3014                       |
+| BLEU 2 | 0.1792       | 0.1732                       |
+| BLEU 3 | 0.1061       | 0.1050                       |
+| BLEU 4 | 0.0637       | 0.0651
 
 Beam search provided a slight improvement in higher order BLEU scores, while greedy decoding performed comparably on unigram precision. This behavior is consistent with common observations in image captioning models.
 
@@ -68,7 +99,6 @@ Beam search provided a slight improvement in higher order BLEU scores, while gre
 
 Planned extensions for this project include:
 
-- Replacing LSTM decoders with GRU based decoders
 - Exploring hybrid architectures combining LSTM and GRU layers
 - Adding additional evaluation metrics such as CIDEr and METEOR
 - Improving attention mechanisms or experimenting with transformer based decoders

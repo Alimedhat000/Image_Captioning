@@ -74,7 +74,7 @@ class AttentionGRUDecoder(nn.Module):
         attention_weights = []
 
         # Initialize hidden state: [num_layers, 1, hidden_size]
-        h, c = self.init_hidden_state(features)
+        h = self.init_hidden_state(features)
 
         features_expanded = features.unsqueeze(1)
         word = torch.tensor([vocab.start_idx]).to(device)
