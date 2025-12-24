@@ -81,6 +81,8 @@ The GRU based model was also evaluated using BLEU scores with both greedy decodi
 | BLEU 2 | 0.1792       | 0.1732                       |
 | BLEU 3 | 0.1061       | 0.1050                       |
 | BLEU 4 | 0.0637       | 0.0651                       |
+| CIDEr  | 0.5301       | 0.5684                       |
+
 
 Beam search provided a slight improvement in higher order BLEU scores, while greedy decoding performed comparably on unigram precision. This behavior is consistent with common observations in image captioning models.
 
@@ -103,7 +105,6 @@ Adding Spatial Features did not improve the BLEU metrics that much
 
 Planned extensions for this project include:
 
-- Adding additional evaluation metrics such as CIDEr and METEOR
 - Improving attention mechanisms or experimenting with transformer based decoders
 
 ### References
