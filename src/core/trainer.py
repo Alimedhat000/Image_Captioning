@@ -425,7 +425,7 @@ class Trainer:
             # Log metrics
             if self.logger:
                 self.logger.log_metrics(
-                    {k + "_epoch": v for k, v in val_metrics.items()},
+                    {k: v for k, v in val_metrics.items()},
                     self.current_epoch,
                 )
 

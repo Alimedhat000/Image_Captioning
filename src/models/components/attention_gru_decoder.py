@@ -19,25 +19,39 @@ class AttentionGRUDecoder(nn.Module):
         self.num_layers = num_layers
 
         self.embedding = nn.Embedding(vocab_size, embed_size)
-        self.attention = Attention(embed_size, hidden_size, attention_dim)
+        self.attention = Attention(
+            embed_size, hidden_size, attention_dim
+        )  # encoder_dim = embed_size
 
         self.gru = nn.GRU(
-            input_size=embed_size + embed_size,
+            input_size=embed_size + embed_size,  # word embedding + context
             hidden_size=hidden_size,
             num_layers=num_layers,
-            batch_first=True,  # Crucial for [batch, seq, feature]
+            batch_first=True,
             dropout=dropout if num_layers > 1 else 0,
         )
 
         self.fc = nn.Linear(hidden_size, vocab_size)
         self.dropout = nn.Dropout(dropout)
+
+        # Initialize hidden state from MEAN of spatial features
         self.init_h = nn.Linear(embed_size, hidden_size)
 
         self.vocab_size = vocab_size
 
     def init_hidden_state(self, features):
-        # nn.LSTM expects states shaped: (num_layers, batch, hidden_size)
-        h = self.init_h(features).unsqueeze(0).repeat(self.num_layers, 1, 1)
+        # Handle both shapes:
+        # - Old encoder: [batch, embed_size]
+        # - New encoder: [batch, num_pixels, embed_size]
+
+        if features.ndim == 2:
+            # Old encoder: [batch, embed_size]
+            mean_features = features
+        else:
+            # New encoder: [batch, num_pixels, embed_size]
+            mean_features = features.mean(dim=1)
+
+        h = self.init_h(mean_features).unsqueeze(0).repeat(self.num_layers, 1, 1)
         return h
 
     def forward(self, features, captions, lengths):
@@ -47,21 +61,18 @@ class AttentionGRUDecoder(nn.Module):
         embeddings = self.dropout(self.embedding(captions))
         h = self.init_hidden_state(features)
 
+        # Handle both encoder types for attention
+        if features.ndim == 2:
+            # Old encoder: add sequence dimension
+            features = features.unsqueeze(1)  # [batch, 1, embed_size]
+
         outputs = []
         alphas = []
-        features_expanded = features.unsqueeze(1)
 
         for t in range(max_length):
-            # We use the top-layer hidden state (h[-1]) for attention
-            context, alpha = self.attention(features_expanded, h[-1])
-
-            # nn.LSTM needs a sequence dimension, so we unsqueeze to [batch, 1, dim]
+            context, alpha = self.attention(features, h[-1])
             lstm_input = torch.cat([embeddings[:, t, :], context], dim=1).unsqueeze(1)
-
-            # Pass through LSTM (it handles all layers internally)
             output, h = self.gru(lstm_input, h)
-
-            # Predict next word (squeeze the seq dimension back)
             preds = self.fc(self.dropout(output.squeeze(1)))
 
             outputs.append(preds)
@@ -73,26 +84,21 @@ class AttentionGRUDecoder(nn.Module):
         result = []
         attention_weights = []
 
-        # Initialize hidden state: [num_layers, 1, hidden_size]
         h = self.init_hidden_state(features)
 
-        features_expanded = features.unsqueeze(1)
+        # Handle both encoder types
+        if features.ndim == 2:
+            features = features.unsqueeze(1)  # [batch, 1, embed_size]
+
         word = torch.tensor([vocab.start_idx]).to(device)
 
         for _ in range(max_length):
-            word_embed = self.embedding(word)  # [1, embed_size]
-
-            # Use top layer (h[-1]) for attention
-            context, alpha = self.attention(features_expanded, h[-1])
+            word_embed = self.embedding(word)
+            context, alpha = self.attention(features, h[-1])
             attention_weights.append(alpha.squeeze(0).cpu().detach().numpy())
 
-            # Concat word and context, then add the sequence dimension (dim=1)
             lstm_input = torch.cat([word_embed, context], dim=1).unsqueeze(1)
-
-            # Pass through LSTM
             output, h = self.gru(lstm_input, h)
-
-            # Predict (Squeeze the sequence dimension back for the FC layer)
             output = self.fc(output.squeeze(1))
             predicted = output.argmax(1)
 
@@ -105,9 +111,9 @@ class AttentionGRUDecoder(nn.Module):
         return result, attention_weights
 
     def beam_search(self, features, vocab, beam_width=5, max_length=20, device="cpu"):
+        # features: [1, 49, embed_size]
         k = beam_width
         h = self.init_hidden_state(features)
-        features_expanded = features.unsqueeze(1)
 
         sequences = [[vocab.start_idx]]
         scores = [0.0]
@@ -128,12 +134,11 @@ class AttentionGRUDecoder(nn.Module):
                 word = torch.tensor([seq[-1]]).to(device)
                 word_embed = self.embedding(word)
 
-                context, alpha = self.attention(features_expanded, h_current[-1])
+                # Attention over spatial features
+                context, alpha = self.attention(features, h_current[-1])
 
                 lstm_input = torch.cat([word_embed, context], dim=1).unsqueeze(1)
-
                 output, h_new = self.gru(lstm_input, h_current)
-
                 output = self.fc(output.squeeze(1))
                 log_probs = F.log_softmax(output, dim=1)
                 top_log_probs, top_indices = log_probs.topk(k, dim=1)

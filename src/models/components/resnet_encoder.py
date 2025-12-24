@@ -23,4 +23,4 @@ class ResNet50Encoder(nn.Module):
         self.resnet.fc = nn.Linear(num_features, out_features=embed_size)
 
     def forward(self, x):
-        return self.resnet(x)
+        return self.resnet(x)  # [batch, embed_size]

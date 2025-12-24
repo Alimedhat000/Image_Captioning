@@ -29,6 +29,9 @@ Two different architectures were implemented and evaluated:
    - Attention dimension of 512
    - GRU hidden dimension of 512
 
+4. **ResNet50(Spatial features) + Attention + Stacked GRU**
+   - Removed ResNet50 AvgPooling and fc layers and just used 49 raw features instead.
+
 ### Dataset
 
 The models were trained and evaluated on the **Flickr8k** dataset. Each image is paired with multiple human annotated captions. Standard train, validation, and test splits were used.
@@ -38,13 +41,6 @@ The models were trained and evaluated on the **Flickr8k** dataset. Each image is
 - Optimizer: Adam
 - Loss function: Masked Cross Entropy Loss to properly ignore padding tokens
 - Number of epochs: 30
-
-Final training metrics for the attention based model:
-
-| Split      | Loss  | Perplexity |
-| ---------- | ----- | ---------- |
-| Train      | 2.554 | 12.89      |
-| Validation | 2.855 | 17.85      |
 
 ### Metrics Comparison
 
@@ -78,9 +74,11 @@ The GRU based model was also evaluated using BLEU scores with both greedy decodi
 | BLEU 1 | 0.3184       | 0.3014                       |
 | BLEU 2 | 0.1792       | 0.1732                       |
 | BLEU 3 | 0.1061       | 0.1050                       |
-| BLEU 4 | 0.0637       | 0.0651
+| BLEU 4 | 0.0637       | 0.0651                       | 
 
 Beam search provided a slight improvement in higher order BLEU scores, while greedy decoding performed comparably on unigram precision. This behavior is consistent with common observations in image captioning models.
+
+Adding Spatial Features did not improve the BLEU metrics that much
 
 ### Examples
 
