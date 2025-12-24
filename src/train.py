@@ -175,21 +175,62 @@ def main(cfg: DictConfig) -> Optional[float]:
     print_config(cfg)
 
     # Try to print model summary
+
+    # Try to print model summary
     try:
         # Get input size from datamodule
-        input_size = datamodule.train_dataset[0][0].shape
+        image_shape = datamodule.train_dataset[0][0].shape
+        batch_size = datamodule.batch_size
 
-        # Add batch dimension
-        input_size = (datamodule.batch_size, *input_size)
-
+        # Print encoder summary separately
+        print_colored_separator("ENCODER SUMMARY", style="bold green")
         print_model_summary(
-            model.net,
-            input_size=input_size,
-            col_names=["input_size", "output_size", "num_params", "mult_adds"],
-            verbose=0,  # 0 for no individual layer info, 1 for full summary
+            model=model.encoder,
+            input_size=(batch_size, *image_shape),  # (batch, 3, 224, 224)
+            col_names=["input_size", "output_size", "num_params", "trainable"],
+            verbose=0,
         )
+
+        # Print decoder summary separately
+        print_colored_separator("DECODER SUMMARY", style="bold blue")
+        # Decoder takes encoded features as input
+        embed_size = (
+            model.encoder.resnet.fc.out_features
+            if hasattr(model.encoder, "resnet")
+            else 512
+        )
+        print_model_summary(
+            model=model.decoder,
+            input_size=(batch_size, embed_size),  # (batch, embed_size)
+            col_names=["input_size", "output_size", "num_params", "trainable"],
+            verbose=0,
+        )
+
+        # Print overall statistics
+        print_colored_separator("OVERALL MODEL STATISTICS", style="bold cyan")
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        encoder_params = sum(p.numel() for p in model.encoder.parameters())
+        decoder_params = sum(p.numel() for p in model.decoder.parameters())
+
+        from rich.text import Text
+
+        stats = Text()
+        stats.append(f"Total Parameters: {total_params:,}\n", style="bold green")
+        stats.append(
+            f"Trainable Parameters: {trainable_params:,}\n", style="bold green"
+        )
+        stats.append(f"Encoder Parameters: {encoder_params:,}\n", style="cyan")
+        stats.append(f"Decoder Parameters: {decoder_params:,}\n", style="blue")
+        from src.utils.rich_utils import console
+
+        console.print(stats)
+
     except Exception as e:
         print_text(f"Could not generate model summary: {e}", style="bold red")
+        import traceback
+
+        traceback.print_exc()
 
     # ========== Training ==========
     if cfg.get("train"):
