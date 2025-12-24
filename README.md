@@ -102,7 +102,6 @@ Adding Spatial Features did not improve the BLEU metrics that much
 
 Planned extensions for this project include:
 
-- Adding additional evaluation metrics such as CIDEr and METEOR
 - Improving attention mechanisms or experimenting with transformer based decoders
 
 ### References
