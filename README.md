@@ -88,6 +88,13 @@ Beam search provided a slight improvement in higher order BLEU scores, while gre
 
 Adding Spatial Features did not improve the BLEU metrics that much
 
+After Improving the tokenizer this is the results 
+
+| Metric | Greedy Score | Beam Score (beam width of 5) |
+| ------ | ------------ | ---------------------------- |
+| BLEU 4 | 0.0637       | 0.0703                      |
+| CIDEr  | 0.5389       | 0.5759                       |
+
 ### Examples
 
 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start;">
