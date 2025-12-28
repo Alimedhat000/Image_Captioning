@@ -7,3 +7,6 @@ trainer:
   limit_train_batches: 20
   limit_val_batches: 10
   profiler: "pytorch" # You can change this to "simple" or "advanced" for less detailed profiling
+
+callbacks:
+  model_checkpoint: None

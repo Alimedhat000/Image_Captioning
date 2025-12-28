@@ -1,6 +1,8 @@
 """Vocabulary for caption encoding/decoding with spaCy tokenizer."""
 
 from collections import Counter
+import pickle
+import os
 import spacy
 
 
@@ -23,6 +25,7 @@ class Vocabulary:
         """
         self.freq_threshold = freq_threshold
         self.use_spacy = use_spacy
+        self.spacy_model = spacy_model
 
         # Load spaCy tokenizer only if needed
         if use_spacy:
@@ -86,6 +89,61 @@ class Vocabulary:
                 self.idx2word[idx] = word
                 idx += 1
 
+    def save(self, filepath):
+        """Save vocabulary to a pickle file.
+
+        Args:
+            filepath: Path to save the pickle file
+        """
+        # Don't pickle the spaCy model object, just save the necessary data
+        save_dict = {
+            "freq_threshold": self.freq_threshold,
+            "use_spacy": self.use_spacy,
+            "spacy_model": self.spacy_model,
+            "word2idx": self.word2idx,
+            "idx2word": self.idx2word,
+            "word_count": self.word_count,
+        }
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True) if os.path.dirname(
+            filepath
+        ) else None
+
+        with open(filepath, "wb") as f:
+            pickle.dump(save_dict, f)
+        print(f"Vocabulary saved to {filepath}")
+
+    @classmethod
+    def load(cls, filepath):
+        """Load vocabulary from a pickle file.
+
+        Args:
+            filepath: Path to the pickle file
+
+        Returns:
+            Vocabulary object
+        """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Vocabulary file not found: {filepath}")
+
+        with open(filepath, "rb") as f:
+            save_dict = pickle.load(f)
+
+        # Create a new vocabulary instance
+        vocab = cls(
+            freq_threshold=save_dict["freq_threshold"],
+            spacy_model=save_dict["spacy_model"],
+            use_spacy=save_dict["use_spacy"],
+        )
+
+        # Restore the saved state
+        vocab.word2idx = save_dict["word2idx"]
+        vocab.idx2word = save_dict["idx2word"]
+        vocab.word_count = save_dict["word_count"]
+
+        print(f"Vocabulary loaded from {filepath}")
+        return vocab
+
     def encode(self, text):
         """Convert text to list of indices.
 
@@ -97,27 +155,10 @@ class Vocabulary:
         """
         tokens = []
 
-        # Split by special tokens to preserve them
-        parts = text.split()
-
-        for part in parts:
-            if part in [self.START_TOKEN, self.END_TOKEN]:
-                # Keep special tokens as-is
-                tokens.append(part)
-            else:
-                # Collect non-special tokens to tokenize together
-                if tokens and tokens[-1] not in [self.START_TOKEN, self.END_TOKEN]:
-                    # Accumulate text between special tokens
-                    continue
-                else:
-                    # This is the start of a new text segment
-                    pass
-
-        # Better approach: handle special tokens explicitly
         result = []
         if text.startswith(self.START_TOKEN):
             result.append(self.word2idx[self.START_TOKEN])
-            text = text[len(self.START_TOKEN) :].strip()
+            text = text[len(self.START_TOKEN) :].strip()  # Remove unwanted whitespaces
 
         if text.endswith(self.END_TOKEN):
             end_token = True
@@ -129,7 +170,9 @@ class Vocabulary:
         tokens = self.tokenize(text)
         result.extend(
             [
-                self.word2idx.get(token, self.word2idx[self.UNK_TOKEN])
+                self.word2idx.get(
+                    token, self.word2idx[self.UNK_TOKEN]
+                )  # fall back to <unk>
                 for token in tokens
             ]
         )

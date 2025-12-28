@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.models.components.attention import Attention
+
 
 class AttentionGRUDecoder(nn.Module):
     def __init__(
@@ -13,6 +15,17 @@ class AttentionGRUDecoder(nn.Module):
         num_layers=1,
         dropout=0.5,
     ):
+        """
+        GRU-based decoder with attention mechanism for image captioning.
+
+        Args:
+            embed_size (int): Size of word embeddings.
+            hidden_size (int): Number of hidden units in GRU.
+            vocab_size (int): Size of the output vocabulary.
+            attention_dim (int): Size of attention intermediate layer. Default: 512
+            num_layers (int): Number of GRU layers. Default: 1
+            dropout (float): Dropout rate for embeddings and GRU. Default: 0.5
+        """
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -20,8 +33,8 @@ class AttentionGRUDecoder(nn.Module):
 
         self.embedding = nn.Embedding(vocab_size, embed_size)
         self.attention = Attention(
-            embed_size, hidden_size, attention_dim
-        )  # encoder_dim = embed_size
+            encoder_dim=embed_size, decoder_dim=hidden_size, attention_dim=attention_dim
+        )
 
         self.gru = nn.GRU(
             input_size=embed_size + embed_size,  # word embedding + context
@@ -33,54 +46,112 @@ class AttentionGRUDecoder(nn.Module):
 
         self.fc = nn.Linear(hidden_size, vocab_size)
         self.dropout = nn.Dropout(dropout)
-
-        # Initialize hidden state from MEAN of spatial features
         self.init_h = nn.Linear(embed_size, hidden_size)
-
         self.vocab_size = vocab_size
 
     def init_hidden_state(self, features):
+        """
+        Initialize the GRU hidden state from encoder features.
+
+        Args:
+            features (torch.Tensor): Encoder output of shape
+                [batch, embed_size] or [batch, num_pixels, embed_size].
+
+        Returns:
+            torch.Tensor: Initialized hidden state of shape
+                [num_layers, batch, hidden_size].
+        """
         # Handle both shapes:
-        # - Old encoder: [batch, embed_size]
-        # - New encoder: [batch, num_pixels, embed_size]
+        # - [batch, embed_size]
+        # - [batch, num_pixels, embed_size]
 
         if features.ndim == 2:
-            # Old encoder: [batch, embed_size]
+            # [batch, embed_size]
             mean_features = features
         else:
-            # New encoder: [batch, num_pixels, embed_size]
+            # [batch, num_pixels, embed_size]
+            # Take the mean of all features
             mean_features = features.mean(dim=1)
 
+        # init the hidden state for all layers
         h = self.init_h(mean_features).unsqueeze(0).repeat(self.num_layers, 1, 1)
         return h
 
     def forward(self, features, captions, lengths):
-        batch_size = features.size(0)
-        max_length = captions.size(1)
+        """
+        Forward pass for training.
 
+        Args:
+            features (torch.Tensor): Encoder output. [Batch, num_pixels, embed_size] or [batch, embed_size]
+            captions (torch.Tensor): Ground truth captions. [batch, max_length]
+            lengths (list[int]): Lengths of each caption.
+
+        Returns:
+            tuple:
+                - outputs (torch.Tensor): Predicted token scores, shape [batch, max_length, vocab_size].
+                - alphas (torch.Tensor): Attention weights, shape [batch, max_length, num_pixels].
+        """
+
+        batch_size = features.size(0)  # B
+        max_length = captions.size(1)  # T (time steps)
+
+        # Embed captions [B, T] -> [B, T, embed-size]
         embeddings = self.dropout(self.embedding(captions))
-        h = self.init_hidden_state(features)
+        # Init hidden state [num_layers, B, hidden_size]
+        hidden = self.init_hidden_state(features)
 
         # Handle both encoder types for attention
         if features.ndim == 2:
             # Old encoder: add sequence dimension
             features = features.unsqueeze(1)  # [batch, 1, embed_size]
+        # Now features is always: [B, L, embed_size] where L = num_pixels
 
         outputs = []
         alphas = []
 
         for t in range(max_length):
-            context, alpha = self.attention(features, h[-1])
-            lstm_input = torch.cat([embeddings[:, t, :], context], dim=1).unsqueeze(1)
-            output, h = self.gru(lstm_input, h)
+            # Compute attention over encoder features
+            # hidden[-1]: [B, hidden_size] output of the last GRU layer
+            # context: [B, embed_size], alpha: [batch_size, num_pixels]
+            context, alpha = self.attention(features, hidden[-1])
+
+            # Concatenate word embedding with context
+            # get the specific time step in the embeddings embeddings[:, t, :]: [B, embed_size]
+            # context: [B, embed_size]
+            # after the cat: [B, 2*embed_size] -> [B, 1, 2*embed_size]
+            input = torch.cat([embeddings[:, t, :], context], dim=1).unsqueeze(1)
+
+            # GRU forward
+            # output: [B, 1, hidden_size]
+            output, hidden = self.gru(input, hidden)
+
+            # Project to vocabulary
+            # preds: [B, vocab_size]
             preds = self.fc(self.dropout(output.squeeze(1)))
 
-            outputs.append(preds)
-            alphas.append(alpha)
+            outputs.append(preds)  # [B, vocab_size]
+            alphas.append(alpha)  # [B, L]
 
+        # Stack predictions and attention weights across time
+        # outputs: [B, T, vocab_size]
+        # alphas: [B, T, L]
         return torch.stack(outputs, dim=1), torch.stack(alphas, dim=1)
 
-    def generate_caption(self, features, vocab, max_length=20, device="cpu"):
+    def generate_caption(self, features, vocab, max_length=200, device="cpu"):
+        """
+        Generate caption using greedy decoding.
+
+        Args:
+            features: [b, L, embed_size] or [b, embed_size]
+            vocab: Vocabulary object
+            max_length: maximum caption length
+            device: device to run on
+
+        Returns:
+            result: list of token indices
+            attention_weights: list of attention weight arrays
+        """
+
         result = []
         attention_weights = []
 
@@ -90,6 +161,7 @@ class AttentionGRUDecoder(nn.Module):
         if features.ndim == 2:
             features = features.unsqueeze(1)  # [batch, 1, embed_size]
 
+        # start with <sos>
         word = torch.tensor([vocab.start_idx]).to(device)
 
         for _ in range(max_length):
@@ -100,9 +172,11 @@ class AttentionGRUDecoder(nn.Module):
             lstm_input = torch.cat([word_embed, context], dim=1).unsqueeze(1)
             output, h = self.gru(lstm_input, h)
             output = self.fc(output.squeeze(1))
-            predicted = output.argmax(1)
 
+            # get most likely word
+            predicted = output.argmax(1)
             result.append(predicted.item())
+
             if predicted.item() == vocab.end_idx:
                 break
 
@@ -110,7 +184,7 @@ class AttentionGRUDecoder(nn.Module):
 
         return result, attention_weights
 
-    def beam_search(self, features, vocab, beam_width=5, max_length=20, device="cpu"):
+    def beam_search(self, features, vocab, beam_width=5, max_length=200, device="cpu"):
         # features: [1, 49, embed_size]
         k = beam_width
         h = self.init_hidden_state(features)
@@ -170,56 +244,3 @@ class AttentionGRUDecoder(nn.Module):
 
         best_idx = scores.index(max(scores))
         return sequences[best_idx], attention_history[best_idx]
-
-
-class Attention(nn.Module):
-    """Soft Attention mechanism.
-
-    Computes attention weights over encoder features based on decoder state.
-    """
-
-    def __init__(self, encoder_dim, decoder_dim, attention_dim):
-        """Initialize attention.
-
-        Args:
-            encoder_dim: Encoder feature dimension
-            decoder_dim: Decoder hidden state dimension
-            attention_dim: Attention hidden dimension
-        """
-        super().__init__()
-
-        self.encoder_att = nn.Linear(encoder_dim, attention_dim)
-        self.decoder_att = nn.Linear(decoder_dim, attention_dim)
-        self.full_att = nn.Linear(attention_dim, 1)
-
-    def forward(self, encoder_out, decoder_hidden):
-        """Compute attention.
-
-        Args:
-            encoder_out: Encoder features [batch_size, num_pixels, encoder_dim]
-            decoder_hidden: Decoder hidden state [batch_size, decoder_dim]
-
-        Returns:
-            context: Attended features [batch_size, encoder_dim]
-            alpha: Attention weights [batch_size, num_pixels]
-        """
-        # Transform encoder features
-        att1 = self.encoder_att(encoder_out)  # [batch_size, num_pixels, attention_dim]
-
-        # Transform decoder state
-        att2 = self.decoder_att(decoder_hidden)  # [batch_size, decoder_dim]
-        att2 = att2.unsqueeze(1)  # [batch_size, 1, attention_dim]
-
-        # Compute attention scores
-        att = self.full_att(torch.tanh(att1 + att2))  # [batch_size, num_pixels, 1]
-        att = att.squeeze(2)  # [batch_size, num_pixels]
-
-        # Softmax to get attention weights
-        alpha = F.softmax(att, dim=1)  # [batch_size, num_pixels]
-
-        # Compute weighted sum of encoder features
-        context = (encoder_out * alpha.unsqueeze(2)).sum(
-            dim=1
-        )  # [batch_size, encoder_dim]
-
-        return context, alpha

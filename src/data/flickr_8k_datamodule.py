@@ -73,7 +73,10 @@ class Flickr8kDataModule(DataModule):
             batch_size: Batch size
             num_workers: Number of dataloader workers
             pin_memory: Whether to pin memory
-            train_val_split: Train/val split (must sum to 60000)
+            train_val_test_split: Train/val/test split (must sum to 1)
+            freq_threshold: Vocabulary minimum frequency
+            img_size: Image size to feed into the model
+            use_spacey: use the spaCy when building the vocab for better tokenization
         """
         super().__init__(
             data_dir=data_dir,
@@ -179,9 +182,17 @@ class Flickr8kDataModule(DataModule):
         val_df = df[df["image"].isin(val_imgs)].reset_index(drop=True)
         test_df = df[df["image"].isin(test_imgs)].reset_index(drop=True)
 
-        # Build Vocab from training captions to ensure relastic evaluation
-        self.vocab = Vocabulary(self.freq_threshold, use_spacy=self.use_spacy)
-        self.vocab.build_vocabulary(train_df["clean_captions"].to_list())
+        # Build Vocab from training captions to ensure realistic evaluation
+        vocab_path = "vocab.pkl"
+
+        if os.path.exists(vocab_path):
+            print("Loading existing vocabulary...")
+            self.vocab = Vocabulary.load(vocab_path)
+        else:
+            print("Building vocabulary from scratch...")
+            self.vocab = Vocabulary(self.freq_threshold, use_spacy=self.use_spacy)
+            self.vocab.build_vocabulary(train_df["clean_captions"].to_list())
+            self.vocab.save(vocab_path)
 
         # Finaly Create Datasets
         if stage == "fit" or stage is None:

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.models.components.attention import Attention
+
 
 class HybridLSTMGRUDecoder(nn.Module):
     def __init__(
@@ -236,31 +238,3 @@ class HybridLSTMGRUDecoder(nn.Module):
 
         best_idx = scores.index(max(scores))
         return sequences[best_idx], attention_history[best_idx]
-
-
-class Attention(nn.Module):
-    """Soft Attention mechanism."""
-
-    def __init__(self, encoder_dim, decoder_dim, attention_dim):
-        super().__init__()
-        self.encoder_att = nn.Linear(encoder_dim, attention_dim)
-        self.decoder_att = nn.Linear(decoder_dim, attention_dim)
-        self.full_att = nn.Linear(attention_dim, 1)
-
-    def forward(self, encoder_out, decoder_hidden):
-        """Compute attention.
-
-        Args:
-            encoder_out: [batch_size, num_pixels, encoder_dim]
-            decoder_hidden: [batch_size, decoder_dim]
-
-        Returns:
-            context: [batch_size, encoder_dim]
-            alpha: [batch_size, num_pixels]
-        """
-        att1 = self.encoder_att(encoder_out)
-        att2 = self.decoder_att(decoder_hidden).unsqueeze(1)
-        att = self.full_att(torch.tanh(att1 + att2)).squeeze(2)
-        alpha = F.softmax(att, dim=1)
-        context = (encoder_out * alpha.unsqueeze(2)).sum(dim=1)
-        return context, alpha
